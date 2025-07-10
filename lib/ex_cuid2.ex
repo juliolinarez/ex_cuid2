@@ -21,6 +21,20 @@ defmodule ExCuid2 do
   @base36_chars ~c"0123456789abcdefghijklmnopqrstuvwxyz"
 
   @doc """
+  Defines how this module should be supervised.
+  This allows it to be added directly to a supervision tree.
+  """
+  def child_spec(opts) do
+    %{
+      id: __MODULE__,
+      start: {__MODULE__, :start_link, [opts]},
+      type: :worker,
+      restart: :permanent,
+      shutdown: 1000
+    }
+  end
+
+  @doc """
   Starts the counter agent.
 
   It should be added to the supervision tree in `application.ex`.
