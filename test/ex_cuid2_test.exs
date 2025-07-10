@@ -1,29 +1,6 @@
 defmodule ExCuid2Test do
-  use ExUnit.Case, async: false
+  use ExUnit.Case, async: true
   doctest ExCuid2
-
-  # Solution to Problem 1: Start the Agent before each test.
-  # This ensures that `:cuid2_counter` always exists when needed.
-  setup do
-    name = :cuid2_counter
-
-    # If it already exists, kill it before starting a new one
-    if pid = Process.whereis(name) do
-      Process.exit(pid, :kill)
-
-      # Wait for the process to fully terminate to avoid registration conflicts
-      ref = Process.monitor(pid)
-      receive do
-        {:DOWN, ^ref, :process, ^pid, _reason} -> :ok
-      after
-        100 -> :ok
-      end
-    end
-
-    {:ok, _pid} = ExCuid2.start_link([])
-
-    :ok
-  end
 
   test "generate/0 produces a CUID with the default length (24)" do
     cuid = ExCuid2.generate()
@@ -59,7 +36,7 @@ defmodule ExCuid2Test do
   end
 
   test "Uniqueness test: generates unique IDs in high-volume bursts" do
-    count = 20_000
+    count = 50_000
     ids = for _ <- 1..count, do: ExCuid2.generate()
     unique_ids = Enum.uniq(ids)
 

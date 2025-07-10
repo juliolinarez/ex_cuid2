@@ -22,7 +22,17 @@ The package is available in [Hex](https://hex.pm/packages/ex_cuid2) and can be i
 ```elixir
 def deps do
   [
-    {:ex_cuid2, "~> 0.9.0"}
+    {:ex_cuid2, "~> 0.9.1"}
   ]
 end
+```
+
+## Use
+
+```elixir
+iex> ExCuid2.generate()
+"v8p7k3f9z1m0c2x4b6n5j7h8"
+
+iex> ExCuid2.generate(30)
+"b5n6m4j3h2g1f0d9s8a7q6w5e4r3t2"
 ```
