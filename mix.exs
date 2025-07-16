@@ -4,11 +4,11 @@ defmodule ExCuid2.MixProject do
   def project do
     [
       app: :ex_cuid2,
-      version: "0.9.1",
+      version: "0.9.2",
       elixir: "~> 1.15",
       start_permanent: Mix.env() == :prod,
       deps: deps(),
-      description: "A robust implementation of cuid2 for Elixir",
+      description: "A robust implementation of Cuid2 for Elixir",
       package: [
         maintainers: ["Julio Linárez"],
         licenses: ["MIT"],

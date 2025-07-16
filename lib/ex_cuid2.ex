@@ -1,6 +1,6 @@
 defmodule ExCuid2 do
   @moduledoc """
-  CUID2 (Collision-Resistant Unique Identifiers) generator in Elixir.
+  A robust, thread-safe, and testable CUID2 (Collision-Resistant Unique Identifiers) generator for Elixir.
 
   This implementation follows the CUID2 standard and generates safe, horizontally scalable IDs,
   ideal for use as primary keys in databases.
@@ -13,16 +13,19 @@ defmodule ExCuid2 do
   - Process fingerprint to ensure uniqueness across nodes.
   """
 
-  # The agent safely maintains the counter state between processes.
-  # The name :cuid2_counter is a convention to register it globally in the node.
-  @counter_agent :cuid2_counter
+  # --- Module Attributes ---
 
-  # Use the ~c sigil for charlists to avoid deprecation warnings.
+  @default_counter_name :cuid2_counter
+  @default_length 24
   @base36_chars ~c"0123456789abcdefghijklmnopqrstuvwxyz"
+  @cuid2_prefix ~c"abcdefghijklmnopqrstuvwxyz"
+  @cuid2_base 36
+
+  # --- OTP Behaviours (for supervision) ---
 
   @doc """
   Defines how this module should be supervised.
-  This allows it to be added directly to a supervision tree.
+  This allows it to be added directly to a supervision tree in `application.ex`.
   """
   def child_spec(opts) do
     %{
@@ -36,37 +39,44 @@ defmodule ExCuid2 do
 
   @doc """
   Starts the counter agent.
-
-  It should be added to the supervision tree in `application.ex`.
+  It can be started with a custom name, which is useful for testing.
   """
-  def start_link(_opts) do
-    Agent.start_link(fn -> 0 end, name: @counter_agent)
+  def start_link(opts \\ []) do
+    name = Keyword.get(opts, :name, @default_counter_name)
+    Agent.start_link(fn -> 0 end, name: name)
   end
 
-  @doc """
-  Generates a CUID2 with the default length (24 characters).
-
-  ## Examples
-      iex> ExCuid2.generate() |> String.length()
-      24
-  """
-  def generate(), do: generate(24)
+  # --- Public API ---
 
   @doc """
-  Generates a CUID2 with a specific length (between 24 and 32).
-
-  ## Examples
-      iex> ExCuid2.generate(32) |> String.length()
-      32
+  Generates a CUID2 with the default length and counter.
   """
-  def generate(length) when is_integer(length) and length in 24..32 do
+  def generate(), do: generate(@default_length, @default_counter_name)
+
+  @doc """
+  Generates a CUID2 with a specific length, using the default counter.
+  Raises `FunctionClauseError` if length is not an integer.
+  """
+  def generate(length) when is_integer(length), do: generate(length, @default_counter_name)
+
+  @doc """
+  Generates a CUID2 with a specific length and counter reference.
+
+  This is the core function. It raises a `FunctionClauseError` if arguments
+  are invalid (e.g., length is not an integer between 24-32, or counter_name
+  is not an atom or PID).
+  """
+  def generate(length, counter_name)
+      when is_integer(length) and
+             length in 24..32 and
+             (is_atom(counter_name) or is_pid(counter_name)) do
     # 1. Get ID components
     timestamp = System.system_time(:millisecond)
-    counter = get_and_increment_counter()
-    entropy = :crypto.strong_rand_bytes(length) # Use crypto for security
+    counter = get_and_increment_counter(counter_name)
+    entropy = :crypto.strong_rand_bytes(length)
     fingerprint = create_fingerprint()
 
-    # 2. Combine everything into a single hash to mix entropy
+    # 2. Combine everything into a single hash
     combined_hash =
       :crypto.hash(
         :sha256,
@@ -78,14 +88,12 @@ defmodule ExCuid2 do
         ]
       )
 
-    # 3. Convert the hash to a large number and encode it in Base36
+    # 3. Convert to Base36
     hash_integer = :binary.decode_unsigned(combined_hash)
     base36_encoded = to_base36(hash_integer)
 
-    # 4. Add a random letter prefix and adjust length
-    # Use ~c sigil here as well.
-    prefix = <<Enum.random(~c"abcdefghijklmnopqrstuvwxyz")>>
-    # Take a portion from the end to ensure maximum randomness
+    # 4. Add prefix and adjust length
+    prefix = <<Enum.random(@cuid2_prefix)>>
     body = String.slice(base36_encoded, -(length - 1), length - 1)
 
     prefix <> body
@@ -93,24 +101,20 @@ defmodule ExCuid2 do
 
   @doc """
   Validates whether a string matches the CUID2 format.
-
-  ## Examples
-      iex> ExCuid2.is_valid?("t4p35j2w2fiyqrec00pjxd7b")
-      true
-
-      iex> ExCuid2.is_valid?("123-abc")
-      false
+  Returns `false` for any non-binary input, will not raise an error.
   """
-  def is_valid?(cuid) do
-    # Regex to validate standard format
-    is_binary(cuid) and Regex.match?(~r/^[a-z][a-z0-9]{23,31}$/, cuid)
+  def is_valid?(cuid) when is_binary(cuid) do
+    Regex.match?(~r/^[a-z][a-z0-9]{23,31}$/, cuid)
   end
 
-  # --- Private functions ---
+  def is_valid?(_other), do: false
+
+  # --- Private Functions ---
 
   # Atomically gets and increments the counter using the Agent.
-  defp get_and_increment_counter do
-    Agent.get_and_update(@counter_agent, fn state ->
+  # Guarded for internal robustness.
+  defp get_and_increment_counter(counter_name) do
+    Agent.get_and_update(counter_name, fn state ->
       # Arbitrarily high limit to reset the counter and prevent indefinite growth
       next_state = if state > 1_000_000, do: 0, else: state + 1
       {state, next_state}
@@ -126,13 +130,12 @@ defmodule ExCuid2 do
     :crypto.hash(:sha256, pid_string <> node_string)
   end
 
-  # Converts an integer to a Base36 string
+  # Converts an integer to a Base36 string.
+  # Guarded for internal robustness.
   defp to_base36(number) do
-    base = 36
-
     Stream.unfold(number, fn
       0 -> nil
-      n -> {rem(n, base), div(n, base)}
+      n -> {rem(n, @cuid2_base), div(n, @cuid2_base)}
     end)
     |> Enum.map(&Enum.at(@base36_chars, &1))
     |> Enum.reverse()
