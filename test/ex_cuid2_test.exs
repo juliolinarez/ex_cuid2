@@ -25,8 +25,10 @@ defmodule ExCuid2Test do
   end
 
   test "is_valid?/1 returns true for a valid CUID" do
-    cuid = ExCuid2.generate()
-    assert ExCuid2.is_valid?(cuid)
+    cuid_24 = ExCuid2.generate()
+    assert ExCuid2.is_valid?(cuid_24)
+    cuid_32 = ExCuid2.generate(32)
+    assert ExCuid2.is_valid?(cuid_32)
   end
 
   test "is_valid?/1 returns false for an invalid CUID" do
@@ -42,4 +44,26 @@ defmodule ExCuid2Test do
 
     assert length(unique_ids) == count
   end
+
+  describe "custom-named agent behavior" do
+    # This setup starts an agent with a name WE provide.
+    setup do
+      ExCuid2.start_link(name: :my_test_counter)
+      :ok
+    end
+
+    test "generate/2 with a custom name uses and increments the correct agent" do
+      # Verify our custom agent is at 0.
+      assert Agent.get(:my_test_counter, & &1) == 0
+
+      # Call the function, explicitly passing the name of our custom agent.
+      ExCuid2.generate(24, :my_test_counter) # Custom counter becomes 1
+      ExCuid2.generate(28, :my_test_counter) # Custom counter becomes 2
+
+      # Assert that the custom counter was incremented.
+      final_custom_count = Agent.get(:my_test_counter, & &1)
+      assert final_custom_count == 2
+    end
+  end
+
 end
