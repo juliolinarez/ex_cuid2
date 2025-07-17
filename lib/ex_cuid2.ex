@@ -21,6 +21,9 @@ defmodule ExCuid2 do
   @cuid2_prefix ~c"abcdefghijklmnopqrstuvwxyz"
   @cuid2_base 36
 
+  # Matches CUID2 format: starts with a letter, followed by 23-31 alphanumeric characters.
+  @cuid2_regex ~r/^[a-z][a-z0-9]{23,31}$/
+
   # --- OTP Behaviours (for supervision) ---
 
   @doc """
@@ -104,7 +107,7 @@ defmodule ExCuid2 do
   Returns `false` for any non-binary input, will not raise an error.
   """
   def is_valid?(cuid) when is_binary(cuid) do
-    Regex.match?(~r/^[a-z][a-z0-9]{23,31}$/, cuid)
+    Regex.match?(@cuid2_regex, cuid)
   end
 
   def is_valid?(_other), do: false
