@@ -4,19 +4,17 @@
 [![Hex.pm](https://img.shields.io/hexpm/v/ex_cuid2.svg)](https://hex.pm/packages/ex_cuid2)
 [![Hex Docs](https://img.shields.io/badge/hex-docs-lightgreen.svg)](https://hexdocs.pm/ex_cuid2/)
 
-**An Elixir implementation of CUID2 (Collision-Resistant Unique Identifiers).**
+`ExCuid2` is a robust, thread-safe, and testable CUID2 (Collision-Resistant Unique Identifiers) generator for Elixir.
 
-`ExCuid2` generates secure, collision-resistant unique identifiers designed for efficiency and horizontal scaling. They are an excellent choice for primary keys in distributed databases.
+This implementation follows the CUID2 standard and generates safe, horizontally scalable IDs,
+ideal for use as primary keys in databases.
 
-## Features
-
--   **Collision-Resistant:** Uses multiple entropy sources to minimize the probability of collisions, even in high-concurrency systems.
--   **Secure:** Starts with a random letter to prevent enumeration attacks and uses `:crypto.strong_rand_bytes` for cryptographically secure entropy.
--   **Scalable:** Includes a process fingerprint to ensure uniqueness across different nodes and application restarts.
--   **Efficient:** Implemented with a stateful `Agent` to manage an atomic counter quickly and safely.
--   **Customizable:** Allows generating IDs with a length between 24 and 32 characters.
--   **Supervisable:** Can be added directly to your application's supervision tree.
-
+Features:
+- Prefix with a random letter.
+- Timestamp in milliseconds.
+- Local Atomic counter to prevent collisions in the same millisecond.
+- Cryptographically secure entropy.
+- Process fingerprint to ensure uniqueness across nodes.
 ## Installation
 
 The package is available in [Hex](https://hex.pm/packages/ex_cuid2) and can be installed by adding `ex_cuid2` to your list of dependencies in `mix.exs`:
@@ -24,7 +22,7 @@ The package is available in [Hex](https://hex.pm/packages/ex_cuid2) and can be i
 ```elixir
 def deps do
   [
-    {:ex_cuid2, "~> 0.9.2"}
+    {:ex_cuid2, "~> 0.10.1"}
   ]
 end
 ```
@@ -126,15 +124,19 @@ defmodule MyApp.Accounts.Migrations.CreateAccount do
   use Ecto.Migration
 
   def change do
-  # primary_key: false is not needed here since we are defining a custom primary key
-     create table(:record, primary_key: false) do
-       # we use char beacuse cuid2 has a fixed length.
-       add :id, :char, primary_key: true, size: 24 # check the cuid2 length
-       add :title, :string
-       add :body, :string
+    # primary_key: false is not needed here since we are defining a custom primary key
+    create table(:record, primary_key: false) do
+      # we use char beacuse cuid2 has a fixed length.
+      add :id, :char, primary_key: true, size: 24 # check the cuid2 length
+      add :title, :string
+      add :body, :string
 
-       timestamps(type: :utc_datetime)
-     end
+      timestamps(type: :utc_datetime)
+    end
+    
+    # Use a hash index for random values as cuid2.
+    create index(:record, [:id], using: :hash)
+  end
 end
 
 ```
@@ -179,53 +181,11 @@ defmodule MyApp.Repo.Migrations.CreateRecord do
 
       timestamps(type: :utc_datetime)
     end
+
+    # Use a hash index for random values as cuid2.
+    create index(:record, [:id], using: :hash)
   end
 end
 
 ```
 
-## Advanced Usage: Supervision
-
-For production applications, you should run `ExCuid2` under your supervision tree. This ensures the counter `Agent` is started and managed correctly by OTP.
-
-### 1. Add to your Supervisor
-
-Add `ExCuid2` as a child in your `application.ex` file.
-
-```elixir
-# in application.ex
-def start(_type, _args) do
-  children = [
-    # ... other children
-    ExCuid2
-  ]
-
-  opts = [strategy: :one_for_one, name: MyApp.Supervisor]
-  Supervisor.start_link(children, opts)
-end
-```
-
-When started this way, `ExCuid2` will automatically use a supervised, named counter (`:cuid2_counter`). You can then call `ExCuid2.generate()` from anywhere in your application.
-
-### 2. Using Multiple Counters
-
-If you need multiple independent counters (for example, to handle different domains of IDs), you can start and supervise multiple named workers.
-
-```elixir
-# in application.ex
-children = [
-  # ...
-  {ExCuid2, name: :user_id_generator},
-  {ExCuid2, name: :post_id_generator}
-]
-```
-
-You can then generate IDs by passing the name of the counter process.
-
-```elixir
-# Generate an ID for a new user
-ExCuid2.generate(24, :user_id_generator)
-
-# Generate an ID for a new blog post
-ExCuid2.generate(24, :post_id_generator)
-```

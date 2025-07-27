@@ -15,27 +15,20 @@ defmodule ExCuid2CollisionTest do
 
     IO.puts("Starting realistic collision test...")
 
-
-    worker_counters =
-      for i <- 1..num_workers do
-        {:ok, pid} = ExCuid2.start_link(name: :"cuid2_counter_#{i}")
-        pid
-      end
-
-    # We use `Task.async_stream/3` to generate IDs concurrently across multiple worker processes.
-    # Each process will have a different counter and fingerprint.
-    # This simulates a realistic scenario where multiple processes generate IDs at the same time.
     all_ids =
-      Task.async_stream(worker_counters, fn counter_pid ->
-        for _ <- 1..ids_per_worker do
-          ExCuid2.generate(24, counter_pid)
+      Task.async_stream(1..num_workers, fn _worker_id ->
+        IO.puts "PID worker: #{inspect self()}"
+        ids = for _ <- 1..ids_per_worker do
+          ExCuid2.generate(24)
         end
+        IO.puts "worker finished: #{inspect Process.get({:counter, ExCuid2}, 0)}"
+        ids
       end,
       timeout: 60_000)
       |> Enum.map(fn {:ok, ids} -> ids end)
       |> List.flatten()
 
-    IO.puts("All IDs #{length(all_ids)} have been generated. Checking for collisions...")
+    IO.puts("All IDs #{total_ids} have been generated. Checking for collisions...")
 
     assert length(Enum.uniq(all_ids)) == total_ids
 
